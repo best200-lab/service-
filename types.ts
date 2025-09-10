@@ -9,6 +9,7 @@ export interface User {
   firm: string;
   isVerified: boolean;
   avatar: string;
+  role?: 'admin' | 'lawyer';
 }
 
 export interface RecentActivity {
