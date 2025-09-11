@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { firestore } from '../../firebase';
+import { supabase } from '../../supabase';
 
 interface UserData {
-  uid: string;
+  id: string;
   email: string;
-  displayName: string;
+  display_name: string;
   status: string;
   role: string;
 }
@@ -15,21 +15,34 @@ const AdminUserManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    if (!firestore) return;
-    const unsubscribe = firestore.collection('users').onSnapshot(snapshot => {
-      const usersData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserData));
-      setUsers(usersData);
-      setLoading(false);
-    }, error => {
-      console.error("Error fetching users:", error);
-      setLoading(false);
-    });
+    if (!supabase) return;
 
-    return () => unsubscribe();
+    const fetchUsers = async () => {
+        setLoading(true);
+        const { data, error } = await supabase.from('profiles').select('*');
+        if (error) {
+            console.error("Error fetching users:", error);
+        } else {
+            setUsers(data as UserData[]);
+        }
+        setLoading(false);
+    };
+
+    fetchUsers();
+
+    const channel = supabase.channel('public:profiles')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        fetchUsers();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
   
   const filteredUsers = users.filter(user => 
-    user.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -60,11 +73,11 @@ const AdminUserManagement: React.FC = () => {
           </thead>
           <tbody className="bg-white divide-y dark:divide-gray-700 dark:bg-gray-800">
             {filteredUsers.map(user => (
-              <tr key={user.uid} className="text-gray-700 dark:text-gray-400">
+              <tr key={user.id} className="text-gray-700 dark:text-gray-400">
                 <td className="px-4 py-3">
                   <div className="flex items-center text-sm">
                     <div>
-                      <p className="font-semibold">{user.displayName}</p>
+                      <p className="font-semibold">{user.display_name}</p>
                       <p className="text-xs text-gray-600 dark:text-gray-400">{user.email}</p>
                     </div>
                   </div>

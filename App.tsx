@@ -1,5 +1,8 @@
+
 import React from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+// FIX: Split imports between react-router and react-router-dom to resolve missing export errors.
+import { Routes, Route, Navigate } from 'react-router';
+import { HashRouter } from 'react-router-dom';
 
 import PublicLayout from './layouts/PublicLayout';
 import PrivateLayout from './layouts/PrivateLayout';
@@ -10,6 +13,8 @@ import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import OnboardingPage from './pages/OnboardingPage';
 import SignupPage from './pages/SignupPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 
 import Dashboard from './pages/Dashboard';
 import ServeDocument from './pages/ServeDocument';
@@ -30,6 +35,8 @@ const App: React.FC = () => {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/onboarding" element={<OnboardingPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
         </Route>
 
         {/* Private App Routes */}

@@ -1,6 +1,9 @@
+
 import React, { useContext } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { auth } from '../../firebase';
+// FIX: Split imports between react-router and react-router-dom to resolve missing export errors.
+import { NavLink } from 'react-router-dom';
+import { useNavigate } from 'react-router';
+import { supabase } from '../../supabase';
 import {
   DashboardIcon,
   AdminUsersIcon,
@@ -11,7 +14,6 @@ import { AdminContext } from '../../layouts/AdminLayout';
 
 const AdminSidebar: React.FC = () => {
     const navigate = useNavigate();
-    // Fix: Consume AdminContext to get and set active tab.
     const context = useContext(AdminContext);
 
     if (!context) {
@@ -19,11 +21,14 @@ const AdminSidebar: React.FC = () => {
     }
     const { activeTab, setActiveTab } = context;
 
-    const handleLogout = () => {
-        if(auth) {
-            auth.signOut().then(() => {
+    const handleLogout = async () => {
+        if(supabase) {
+            const { error } = await supabase.auth.signOut();
+            if (!error) {
                 navigate('/login');
-            });
+            } else {
+                console.error("Logout failed:", error.message);
+            }
         }
     };
 

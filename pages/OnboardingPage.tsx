@@ -1,43 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-// Fix: Import firebase compat to access namespaced APIs like `firebase.firestore.FieldValue`.
-import firebase from 'firebase/compat/app';
-import 'firebase/compat/firestore';
-import { auth, firestore, storage } from '../firebase';
+// FIX: Split imports between react-router and react-router-dom to resolve missing export errors.
+import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router';
+// FIX: Import Database type for strong typing of Supabase payloads.
+import { supabase, type Database } from '../supabase';
 
 const OnboardingPage: React.FC = () => {
     const [fullName, setFullName] = useState('');
     const [phone, setPhone] = useState('');
     const [firmName, setFirmName] = useState('');
-    const [sealFile, setSealFile] = useState<File | null>(null);
+    const [enrolmentNumber, setEnrolmentNumber] = useState('');
     const [consent, setConsent] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const navigate = useNavigate();
 
     useEffect(() => {
-        if (!auth) return;
-        // Fix: Use v8 compat API for observing auth state.
-        const unsubscribe = auth.onAuthStateChanged((user) => {
-            if (user) {
-                // Pre-fill full name from auth profile if available (from Google or signup form)
-                if (user.displayName) {
-                    setFullName(user.displayName);
+        if (!supabase) return;
+        
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+            if (session?.user) {
+                 // Pre-fill full name from auth metadata if available (from Google or signup form)
+                if (session.user.user_metadata?.full_name) {
+                    setFullName(session.user.user_metadata.full_name);
                 }
             } else {
                  // If no user is logged in, redirect to login
                  navigate('/login');
             }
         });
-        return () => unsubscribe();
+
+        return () => {
+            subscription.unsubscribe()
+        };
     }, [navigate]);
 
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            setSealFile(e.target.files[0]);
-        }
-    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -45,18 +42,18 @@ const OnboardingPage: React.FC = () => {
             alert('You must agree to the terms to continue.');
             return;
         }
-        if (!sealFile) {
-            alert('Please upload your lawyer identification or seal.');
+        if (!enrolmentNumber) {
+            alert('Please enter your enrolment number.');
             return;
         }
-        if (!auth || !firestore || !storage) {
-            alert("Firebase is not configured correctly. Please check the console for details.");
+        if (!supabase) {
+            alert("Supabase is not configured correctly. Please check the console for details.");
             return;
         }
 
         setIsSubmitting(true);
         
-        const user = auth.currentUser;
+        const { data: { user } } = await supabase.auth.getUser();
 
         if (!user) {
             alert("You are not logged in. Please log in to continue.");
@@ -66,57 +63,32 @@ const OnboardingPage: React.FC = () => {
         }
 
         try {
-            // 1. Upload file to Firebase Storage
-            // Fix: Use v8 compat API for storage references and file uploads.
-            const sealFileRef = storage.ref(`seals/${user.uid}/${sealFile.name}`);
-            const uploadResult = await sealFileRef.put(sealFile);
-            const sealUrl = await uploadResult.ref.getDownloadURL();
+            const { error } = await supabase.rpc('handle_onboarding', {
+                p_full_name: fullName,
+                p_phone: phone,
+                p_firm_name: firmName || null,
+                p_enrolment_number: enrolmentNumber,
+            });
 
-            // Special handling for admin and pre-verified lawyer
-            let status = 'pending';
-            let role = 'lawyer';
-
-            if (user.email === 'Ogunseun7@gmail.com') {
-                status = 'verified';
-                role = 'admin';
-            } else if (user.email === 'ogunseun8@gmail.com') {
-                status = 'verified';
-            }
-
-            // 2. Save onboarding data to Firestore 'onboarding' collection
-            const onboardingData = {
-                userId: user.uid,
-                email: user.email,
-                fullName,
-                phone,
-                firmName,
-                sealUrl,
-                status,
-                // Fix: Use v8 compat API for server-side timestamps.
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            };
-            // Fix: Use v8 compat API to set a document.
-            await firestore.collection('onboarding').doc(user.uid).set(onboardingData);
-
-            // 3. Create/update user profile in 'users' collection
-            const userData: { [key: string]: any } = {
-                uid: user.uid,
-                email: user.email,
-                displayName: fullName,
-                status: status === 'verified' ? 'verified' : 'pending_verification',
-                role: role
-            };
-            // Fix: Use v8 compat API to set a document with merge options.
-            await firestore.collection('users').doc(user.uid).set(userData, { merge: true });
-
+            if (error) throw error;
+            
             setSubmitted(true);
             setTimeout(() => {
                 navigate('/dashboard');
             }, 3000);
 
-        } catch (error) {
-            console.error("Error submitting onboarding data:", error);
-            alert("An error occurred. Please try again.");
+        } catch (error: any) {
+            console.error("Full error submitting onboarding data:", error);
+            let errorMessage = "An unknown error occurred. Please try again.";
+            if (error.message) {
+                if (error.message.includes('duplicate key value violates unique constraint')) {
+                    errorMessage = "This enrolment number has already been registered. Please check your details or contact support.";
+                } else {
+                    errorMessage = error.message;
+                }
+            }
+            alert(`Submission Failed: ${errorMessage}`);
+        } finally {
             setIsSubmitting(false);
         }
     };
@@ -156,11 +128,16 @@ const OnboardingPage: React.FC = () => {
                             <input type="text" id="firmName" value={firmName} onChange={e => setFirmName(e.target.value)} className="bg-gray-800 border border-gray-600 text-white text-sm rounded-lg focus:ring-jm-teal focus:border-jm-teal block w-full p-2.5" />
                         </div>
                         <div>
-                            <label className="block mb-2 text-sm font-medium text-gray-300">Lawyer Identification / Seal</label>
-                            <label htmlFor="seal-upload" className="flex items-center justify-center w-full p-2.5 bg-gray-800 border border-gray-600 rounded-lg cursor-pointer hover:bg-gray-700">
-                                <span className="text-sm text-gray-400">{sealFile ? sealFile.name : 'Click to upload (PDF, PNG, <2MB)'}</span>
-                                <input id="seal-upload" type="file" accept=".pdf,.png" onChange={handleFileChange} className="hidden" required />
-                            </label>
+                            <label htmlFor="enrolmentNumber" className="block mb-2 text-sm font-medium text-gray-300">Enrolment Number</label>
+                            <input 
+                                type="text" 
+                                id="enrolmentNumber" 
+                                value={enrolmentNumber} 
+                                onChange={e => setEnrolmentNumber(e.target.value)} 
+                                className="bg-gray-800 border border-gray-600 text-white text-sm rounded-lg focus:ring-jm-teal focus:border-jm-teal block w-full p-2.5" 
+                                placeholder="e.g., scn1450000" 
+                                required 
+                            />
                         </div>
                          <div className="flex items-start">
                             <div className="flex items-center h-5">

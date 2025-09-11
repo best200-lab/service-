@@ -1,6 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
-import { auth, firestore } from '../firebase';
+// FIX: Changed import of `Navigate` from `react-router-dom` to `react-router` to fix module export error.
+import { Navigate } from 'react-router';
+import { supabase } from '../supabase';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -11,32 +13,36 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!auth || !firestore) {
+    if (!supabase) {
       setLoading(false);
       setIsAdmin(false);
       return;
     }
-    const unsubscribe = auth.onAuthStateChanged(user => {
-      if (user) {
-        const userDocRef = firestore.collection('users').doc(user.uid);
-        userDocRef.get().then(doc => {
-          if (doc.exists && doc.data()?.role === 'admin') {
-            setIsAdmin(true);
-          } else {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', session.user.id)
+            .single();
+        
+        if (error) {
+            console.error('Error fetching user role', error);
             setIsAdmin(false);
-          }
-          setLoading(false);
-        }).catch(() => {
-          setIsAdmin(false);
-          setLoading(false);
-        });
+        // FIX: Added explicit null check for `data` to prevent potential runtime error.
+        // FIX: Cast `data` to the expected type to resolve the 'never' type inference issue and access the 'role' property.
+        } else if (data && (data as { role: string }).role === 'admin') {
+            setIsAdmin(true);
+        } else {
+            setIsAdmin(false);
+        }
       } else {
         setIsAdmin(false);
-        setLoading(false);
       }
+      setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => subscription.unsubscribe();
   }, []);
 
   if (loading) {

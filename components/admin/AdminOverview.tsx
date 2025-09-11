@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { firestore } from '../../firebase';
+import { supabase } from '../../supabase';
 import { AdminUsersIcon, AdminVerifyIcon } from '../icons';
 import DashboardCard from '../DashboardCard'; // Re-using the existing card component
 
@@ -9,15 +9,23 @@ const AdminOverview: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!firestore) return;
+    if (!supabase) return;
 
     const fetchCounts = async () => {
       try {
-        const usersSnapshot = await firestore.collection('users').get();
-        setUserCount(usersSnapshot.size);
+        const { count: userCount, error: userError } = await supabase
+          .from('profiles')
+          .select('*', { count: 'exact', head: true });
+        if(userError) throw userError;
+        setUserCount(userCount || 0);
 
-        const verificationsSnapshot = await firestore.collection('onboarding').where('status', '==', 'pending').get();
-        setPendingVerifications(verificationsSnapshot.size);
+        const { count: verificationCount, error: verificationError } = await supabase
+            .from('onboarding')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'pending');
+        if(verificationError) throw verificationError;
+        setPendingVerifications(verificationCount || 0);
+
       } catch (error) {
         console.error("Error fetching admin overview data:", error);
       } finally {

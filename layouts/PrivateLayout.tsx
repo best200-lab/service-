@@ -1,5 +1,7 @@
+
 import React, { useState, createContext } from 'react';
-import { Outlet } from 'react-router-dom';
+// FIX: Changed import of `Outlet` from `react-router-dom` to `react-router` to fix module export error.
+import { Outlet } from 'react-router';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 
